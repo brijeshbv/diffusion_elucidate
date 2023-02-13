@@ -55,11 +55,11 @@ sigma_mean, sigma_std = -1.2, 1.2
 fig, axs = plt.subplots(1, 2, figsize=(8, 4))
 samples = torch.distributions.LogNormal(sigma_mean, sigma_std).sample([10000])
 print('Min:', samples.min(), 'Max:', samples.max())
-axs[0].hist([s for s in samples if s < 5], bins=40)
-axs[0].set_title('Distribution (where sigma < 5)')
-axs[1].hist([s for s in samples if s < 1], bins=40)
-axs[1].set_title('Distribution (where sigma < 1)')
-plt.show()
+# axs[0].hist([s for s in samples if s < 5], bins=40)
+# axs[0].set_title('Distribution (where sigma < 5)')
+# axs[1].hist([s for s in samples if s < 1], bins=40)
+# axs[1].set_title('Distribution (where sigma < 1)')
+# plt.show()
 
 # Add noise, drawing from the specified noise distribution:
 sigma_mean, sigma_std = -1.2, 1.2
@@ -84,17 +84,72 @@ inner_model_vpsong = models.SongUNet(
     3,
     3
 ).to(device)
-model = layers.DenoiserVPScore(inner_model_vpsong, sigma_data=0.5).to(device)
-model.load_state_dict(torch.load('./pre_trained/vp_model_faces64_1e.pt'))
+## Load the VP model.
+vpsong_model = layers.DenoiserVPScore(inner_model_vpsong, sigma_data=0.5).to(device)
+vpsong_model.load_state_dict(torch.load('./pre_trained/vp_model_faces64_1e.pt',map_location=device))
+
+inner_model_edm = models.ImageDenoiserModelV1(
+    3, # input channels
+    256, # mapping out
+    [2, 2, 2, 4], # depths
+    [64, 128, 128, 256], # channels
+    [False, False, True, True] # self attention
+).to(device)
+
+## Load the EDM model
+edm_model = layers.Denoiser(inner_model_edm, sigma_data=0.5).to(device)
+edm_model.load_state_dict(torch.load('./pre_trained/model_faces64_1e.pt',map_location=device))
+
 
 # Plot the noise schedule used when sampling:
 sigma_min, sigma_max = 1e-2, 80
 
 
-# Sample from the LMS sampler
+# # VP Sample from the LMS sampler
 
 x = torch.randn([16, 3, size[0], size[1]], device=device) * sigma_max
 sigmas = sampling.get_sigmas_karras(10, sigma_min, sigma_max, rho=7., device=device)
-x_0 = sampling.sample_lms(model, x, sigmas)
+x_0 = sampling.sample_lms(vpsong_model, x, sigmas)
 grid = tv_utils.make_grid(x_0, nrow=4, padding=0)
-utils.to_pil_image(grid).save("demo_lms_sampler.png")
+utils.to_pil_image(grid).save("./demos/VP_lms_sampler.png")
+
+# # VP Sample from the DDPM sampler
+
+x = torch.randn([16, 3, size[0], size[1]], device=device) * sigma_max
+sigmas = sampling.get_sigmas_karras(10, sigma_min, sigma_max, rho=7., device=device)
+x_0 = sampling.sample_dpmpp_2m(vpsong_model, x, sigmas)
+grid = tv_utils.make_grid(x_0, nrow=4, padding=0)
+utils.to_pil_image(grid).save("./demos/VP_DDMP_sampler.png")
+
+# # VP Sample  from the Heun sampler
+
+x = torch.randn([16, 3, size[0], size[1]], device=device) * sigma_max
+sigmas = sampling.get_sigmas_karras(10, sigma_min, sigma_max, rho=7., device=device)
+x_0 = sampling.sample_heun(vpsong_model, x, sigmas)
+grid = tv_utils.make_grid(x_0, nrow=4, padding=0)
+utils.to_pil_image(grid).save("./demos/VP_heun_sampler.png")
+
+# # EDM Sample from the LMS sampler
+
+x = torch.randn([16, 3, size[0], size[1]], device=device) * sigma_max
+sigmas = sampling.get_sigmas_karras(10, sigma_min, sigma_max, rho=7., device=device)
+x_0 = sampling.sample_lms(edm_model, x, sigmas)
+grid = tv_utils.make_grid(x_0, nrow=4, padding=0)
+utils.to_pil_image(grid).save("./demos/edm_lms_sampler.png")
+
+# # EDM Sample from the DDPM sampler
+
+x = torch.randn([16, 3, size[0], size[1]], device=device) * sigma_max
+sigmas = sampling.get_sigmas_karras(10, sigma_min, sigma_max, rho=7., device=device)
+x_0 = sampling.sample_dpmpp_2m(edm_model, x, sigmas)
+grid = tv_utils.make_grid(x_0, nrow=4, padding=0)
+utils.to_pil_image(grid).save("./demos/edm_DDMP_sampler.png")
+
+# EDM Sample from the Heun sampler
+
+x = torch.randn([16, 3, size[0], size[1]], device=device) * sigma_max
+sigmas = sampling.get_sigmas_karras(10, sigma_min, sigma_max, rho=7., device=device)
+x_0 = sampling.sample_heun(edm_model, x, sigmas)
+grid = tv_utils.make_grid(x_0, nrow=4, padding=0)
+utils.to_pil_image(grid).save("./demos/edm_heun_sampler.png")
+
